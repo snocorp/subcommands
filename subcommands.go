@@ -52,6 +52,7 @@ type Commander struct {
 	commands  []*commandGroup
 	topFlags  *flag.FlagSet // top-level flags
 	important []string      // important top-level flags
+	hasFlags  bool          // if there are any top-level flags
 	name      string        // normally path.Base(os.Args[0])
 
 	Output io.Writer // Output specifies where the commander should write its output (default: os.Stdout).
@@ -78,8 +79,21 @@ const (
 // flags and command name. The Usage function for the topLevelFlags
 // will be set as well.
 func NewCommander(topLevelFlags *flag.FlagSet, name string) *Commander {
+	var hasFlags bool
+	if topLevelFlags == nil {
+		topLevelFlags = flag.NewFlagSet(name, flag.ContinueOnError)
+	} else {
+		count := 0
+		topLevelFlags.VisitAll(func(flag *flag.Flag) {
+			count++
+		})
+		if count > 0 {
+			hasFlags = true
+		}
+	}
 	cdr := &Commander{
 		topFlags: topLevelFlags,
+		hasFlags: hasFlags,
 		name:     name,
 		Output:   os.Stdout,
 		Error:    os.Stderr,
@@ -157,15 +171,19 @@ func (p byGroupName) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 // explain prints a brief description of all the subcommands and the
 // important top-level flags.
 func (cdr *Commander) explain(w io.Writer) {
-	fmt.Fprintf(w, "Usage: %s <flags> <subcommand> <subcommand args>\n\n", cdr.name)
+	flagsUsage := ""
+	if cdr.hasFlags {
+		flagsUsage = " <flags>"
+	}
+	fmt.Fprintf(w, "Usage: %s%s <subcommand> <subcommand args>\n\n", cdr.name, flagsUsage)
 	sort.Sort(byGroupName(cdr.commands))
 	for _, group := range cdr.commands {
 		explainGroup(w, group)
 	}
-	if cdr.topFlags == nil {
-		fmt.Fprintln(w, "\nNo top level flags.")
+	if !cdr.hasFlags {
 		return
 	}
+
 	if len(cdr.important) == 0 {
 		fmt.Fprintf(w, "\nUse \"%s flags\" for a list of top-level flags\n", cdr.name)
 		return
